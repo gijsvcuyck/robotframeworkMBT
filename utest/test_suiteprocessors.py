@@ -203,10 +203,12 @@ class TestBatchSize(unittest.TestCase):
     def test_multi_batch(self):
         """Check some variations in batch size versus target size"""
         for target, batch in [(1, 1),     # Smallest target and batch
-                              (23, 3),    # Multiple batches needed te completer
+                              (24, 6),    # Multiple batches needed to complete (exact fit)
+                              (23, 3),    # Multiple batches needed to complete (non-divisible)
                               (10, 24),   # Batch size exceeds target size
                               (15, 14),   # Batch size just not enough
-                              (16, 16)    # Batch size equals target size
+                              (16, 16),   # Batch size equals target size
+                              (17, 1)     # Repeated batch of one
                               ]:
             out_suite = self.processor.process_test_suite(self.suite, coverage_target=0,
                                                           scenario_target=target, batch_size=batch)

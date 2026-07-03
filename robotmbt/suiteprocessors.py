@@ -53,9 +53,11 @@ class SuiteProcessor:
     def __init__(self):
         self.scenario_count: int = 0
         self.commit_count: int = 0
-        self.coverage_target: int = 1
-        self.scenario_target: int = 0
-        self.time_target: float = 0
+        self.end_conditions: dict[str, int | float] = {
+            "coverage_target": 1,
+            "scenario_target": 0,
+            "time_target": 0.0
+        }
 
     def process_test_suite(self, in_suite: Suite,
                            **kwargs) -> Suite:
@@ -97,27 +99,42 @@ class SuiteProcessor:
         return self.scenario_count - self.commit_count
 
     def are_all_targets_reached(self, committed_only: bool = True) -> bool:
-        if not committed_only:
-            return True
-        if self.coverage_target and self.commit_count < self.scenario_count:
-            return False
-        if self.scenario_target and self.commit_count < self.scenario_target:
-            return False
-        if self.time_target and time.time() < self.time_target:
-            return False
+        for condition in self.end_conditions:
+            is_hit, _ = self.check_end_condition(condition, committed_only=committed_only)
+            if not is_hit:
+                return False
         return True
+
+    def check_end_condition(self, condition, committed_only: bool = True) -> tuple[bool, int | float]:
+        match condition:
+            case "coverage_target":
+                actual = self.commit_count // self.scenario_count if committed_only else 1
+            case "scenario_target":
+                actual = self.commit_count if committed_only else self.scenario_count
+            case "time_target":
+                actual = time.time()
+            case _:
+                actual = 0
+
+        threshold = self.end_conditions[condition]
+        if condition.endswith("_target"):
+            is_hit = actual >= threshold if threshold else True
+        else:
+            is_hit = False
+
+        return is_hit, actual
 
     def _handle_target_options(self,
                                coverage_target: str | int | None = 1,
                                scenario_target: str | int = 0,
                                time_target: str | None = None,
                                **kwargs):
-        self.coverage_target = 0 if coverage_target is None else int(coverage_target)
-        if self.coverage_target not in [0, 1]:
+        self.end_conditions["coverage_target"] = 0 if coverage_target is None else int(coverage_target)
+        if self.end_conditions["coverage_target"] not in [0, 1]:
             logger.warn(f"Unsupported coverage target request '{coverage_target}'. Using default coverage target of 1")
-            self.coverage_target = 1
-        self.scenario_target = int(scenario_target)
-        self.time_target = (time.time() + timestr_to_secs(time_target)) if time_target else 0
+            self.end_conditions["coverage_target"] = 1
+        self.end_conditions["scenario_target"] = int(scenario_target)
+        self.end_conditions["time_target"] = (time.time() + timestr_to_secs(time_target)) if time_target else 0
 
 
 class Echo(SuiteProcessor):
@@ -226,22 +243,40 @@ class ModelBased(SuiteProcessor):
     def scenarios_pending(self) -> int:
         return len(self.tracestate) - self.out_suite.scenario_count()
 
-    def are_all_targets_reached(self, tracestate: TraceState | None = None, committed_only: bool = True) -> bool:
-        if tracestate is None:
-            tracestate = self.tracestate
-        if self.time_target and time.time() < self.time_target:
-            return False
-        if committed_only:
-            if self.coverage_target and not tracestate[self.commit_count-1].coverage_reached:
-                return False
-            if self.scenario_target and self.commit_count < self.scenario_target:
-                return False
-        else:
-            if self.coverage_target and not tracestate.coverage_reached():
-                return False
-            if self.scenario_target and len(tracestate) < self.scenario_target:
+    def are_all_targets_reached(self, committed_only: bool = True) -> bool:
+        return self.all_targets_check_w_trace(self.tracestate, committed_only)
+
+    def check_end_condition(self, condition: str, committed_only: bool = True) -> tuple[bool, int | float]:
+        return self.check_end_condition_w_trace(self.tracestate, condition, committed_only)
+
+    def all_targets_check_w_trace(self, tracestate: TraceState, committed_only: bool = True) -> bool:
+        for condition in self.end_conditions:
+            is_hit, _ = self.check_end_condition_w_trace(tracestate, condition, committed_only=committed_only)
+            if not is_hit:
                 return False
         return True
+
+    def check_end_condition_w_trace(self, tracestate: TraceState, condition: str, committed_only: bool = True) -> tuple[bool, int | float]:
+        match condition:
+            case "time_target":
+                return super().check_end_condition(condition, committed_only)
+            case "coverage_target":
+                if committed_only:
+                    actual = 1 if tracestate[self.commit_count-1].coverage_reached else 0
+                else:
+                    actual = 1 if tracestate.coverage_reached() else 0
+            case "scenario_target":
+                actual = self.commit_count if committed_only else len(tracestate)
+            case _:
+                actual = 0
+
+        threshold = self.end_conditions[condition]
+        if condition.endswith("_target"):
+            is_hit = actual >= threshold if threshold else True
+        else:
+            is_hit = False
+
+        return is_hit, actual
 
     def draw_graph_from_export_file(self, file_path: str, graph_style: str):
         self._visualiser = self._init_visualiser()
@@ -326,7 +361,7 @@ class ModelBased(SuiteProcessor):
         return longest
 
     def _discovery_ready(self, tracestate):
-        return self.are_all_targets_reached(tracestate, committed_only=False) or len(tracestate) >= self.batch_size
+        return self.all_targets_check_w_trace(tracestate, committed_only=False) or len(tracestate) >= self.batch_size
 
     def _longest_trace(self, tracestate_list: list[TraceState]) -> int:
         """returns the index of the trace that covers the most scenarios"""
@@ -425,7 +460,7 @@ class ModelBased(SuiteProcessor):
                     if self.__last_candidate_changed_nothing(tracestate):
                         logger.debug("Repeated scenario did not change the model's state. Stop trying.")
                         modeller.rewind(tracestate)
-                    elif self.coverage_target and not self.tracestate.coverage_reached() and tracestate.coverage_drought > self.DROUGHT_LIMIT:
+                    elif self.end_conditions["coverage_target"] and not self.tracestate.coverage_reached() and tracestate.coverage_drought > self.DROUGHT_LIMIT:
                         logger.debug(f"Went too long without new coverage (>{self.DROUGHT_LIMIT}x). "
                                      "Roll back to last coverage increase and try something else.")
                         modeller.rewind(tracestate, drought_recovery=True)
