@@ -36,7 +36,7 @@ import time
 
 from robot.api import logger
 from robot.errors import TimeoutExceeded
-from robot.utils import timestr_to_secs
+from robot.utils import timestr_to_secs, secs_to_timestr
 
 from . import modeller
 from .modelspace import ModelSpace
@@ -51,6 +51,8 @@ except ImportError:
 
 class SuiteProcessor:
     def __init__(self):
+        self.start_time: float = 0
+        self.target_duration: float = 0
         self.scenario_count: int = 0
         self.commit_count: int = 0
         self.end_conditions: dict[str, int | float] = {
@@ -105,7 +107,21 @@ class SuiteProcessor:
                 return False
         return True
 
+    def progress_report(self):
+        status_chart = ["Progress towards run targets (actual/target):"]
+        for condition, threshold in self.end_conditions.items():
+            if threshold:
+                is_hit, actual = self.check_end_condition(condition)
+                if condition == "time_target":
+                    threshold = secs_to_timestr(self.target_duration, compact=True)
+                    actual = secs_to_timestr(int(actual - self.start_time), compact=True)
+                status_chart.append(f"{condition}{'' if is_hit else ' not'} hit ({actual}/{threshold})")
+        logger.info("\n    ".join(status_chart))
+
     def check_end_condition(self, condition, committed_only: bool = True) -> tuple[bool, int | float]:
+        threshold = self.end_conditions[condition]
+        if not threshold:
+            return True, 0
         match condition:
             case "coverage_target":
                 actual = self.commit_count // self.scenario_count if committed_only else 1
@@ -116,9 +132,8 @@ class SuiteProcessor:
             case _:
                 actual = 0
 
-        threshold = self.end_conditions[condition]
         if condition.endswith("_target"):
-            is_hit = actual >= threshold if threshold else True
+            is_hit = actual >= threshold
         else:
             is_hit = False
 
@@ -134,7 +149,9 @@ class SuiteProcessor:
             logger.warn(f"Unsupported coverage target request '{coverage_target}'. Using default coverage target of 1")
             self.end_conditions["coverage_target"] = 1
         self.end_conditions["scenario_target"] = int(scenario_target)
-        self.end_conditions["time_target"] = (time.time() + timestr_to_secs(time_target)) if time_target else 0
+        self.start_time = time.time()
+        self.target_duration = timestr_to_secs(time_target) if time_target else 0
+        self.end_conditions["time_target"] = (self.start_time + self.target_duration) if time_target else 0
 
 
 class Echo(SuiteProcessor):
@@ -186,6 +203,8 @@ class ModelBased(SuiteProcessor):
         super().process_test_suite(in_suite, **kwargs)
         self.batch_size = int(batch_size)
         self._init_randomiser(seed)
+        self._graph_style = graph
+        self._export_graph = export_graph_data
         self._visualiser = self._init_visualiser(in_suite.name) if graph or export_graph_data else None
 
         self.out_suite = Suite(in_suite.name)
@@ -242,6 +261,13 @@ class ModelBased(SuiteProcessor):
     @property
     def scenarios_pending(self) -> int:
         return len(self.tracestate) - self.out_suite.scenario_count()
+
+    def progress_report(self):
+        super().progress_report()
+        if self._graph_style:
+            self._write_visualisation(self._graph_style)
+        if self._export_graph:
+            self._export_graph_data(self._export_graph)
 
     def are_all_targets_reached(self, committed_only: bool = True) -> bool:
         return self.all_targets_check_w_trace(self.tracestate, committed_only)

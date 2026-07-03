@@ -237,6 +237,7 @@ class SuiteReplacer:
         if not isinstance(self.processor, SuiteProcessor):
             raise TypeError("processor must be of type SuiteProcessor")
         if self.processor.are_all_targets_reached():
+            self.processor.progress_report()
             logger.info(f"{self.processor.scenarios_committed} Scenarios completed for model. All targets achieved.")
             return
 
@@ -244,14 +245,15 @@ class SuiteReplacer:
         pending_old = self.processor.scenarios_pending
         if not pending_old:
             logger.info(f"{committed_old} Scenario{'s' if committed_old != 1 else ''} completed. Looking to extend trace.")
+            self.processor.progress_report()
         self.processor.next_scenario_request()
         committed = self.processor.scenarios_committed
         pending = self.processor.scenarios_pending
         new_total = committed + pending
         old_total = committed_old + pending_old
         if not pending_old and new_total == old_total:
-            logger.info(f"Trace could not be extended.")
             if not self.processor.are_all_targets_reached():
+                logger.info(f"Trace could not be extended.")
                 new_tc = self.current_suite.tests.create(name='Confirm exit criteria')
                 new_tc.body.create_keyword(name='Fail', args=('Not all targets achieved',))
                 self.mbt_anchor_suite = None
@@ -260,6 +262,9 @@ class SuiteReplacer:
         if new_total > old_total:
             result.tags.add('mbt trace extension')
             logger.info(f"MBT trace generation prepared {new_total-old_total} new scenarios.")
+        if not pending_old and self.processor.are_all_targets_reached():
+            logger.info("Processing stopped. All targets achieved.")
+            return
         try:
             self.add_test(next(self.test_case_gen[-1]), self.current_suite)
         except StopIteration:
