@@ -116,7 +116,7 @@ class SuiteProcessor:
                 return False
         return True
 
-    def progress_report(self):
+    def target_summary(self):
         status_chart = ["Progress towards run targets (actual/target):"]
         for condition, threshold in self.end_conditions.items():
             if threshold:
@@ -125,7 +125,10 @@ class SuiteProcessor:
                     threshold = secs_to_timestr(self.target_duration, compact=True)
                     actual = secs_to_timestr(int(actual - self.start_time), compact=True)
                 status_chart.append(f"{condition}{'' if is_hit else ' not'} hit ({actual}/{threshold})")
-        logger.info("\n    ".join(status_chart))
+        return "\n    ".join(status_chart)
+
+    def progress_report(self):
+        logger.info(self.target_summary())
 
     def check_end_condition(self, condition, committed_only: bool = True) -> tuple[bool, int | float]:
         threshold = self.end_conditions[condition]

@@ -252,6 +252,7 @@ class SuiteReplacer:
             if not self.processor.are_all_targets_reached():
                 logger.info(f"Trace could not be extended.")
                 new_tc = self.current_suite.tests.create(name='Confirm exit criteria')
+                new_tc.body.create_keyword(name='Log', args=(self.processor.target_summary(),))
                 new_tc.body.create_keyword(name='Fail', args=('Not all targets achieved',))
                 self.mbt_anchor_suite = None
                 return
