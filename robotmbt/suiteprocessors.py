@@ -54,6 +54,8 @@ class SuiteProcessor:
         self.start_time: float = 0
         self.target_duration: float = 0
         self.scenario_count: int = 0
+        # commit_count counts the scenarios committed by the runner. I.e. the scenarios that are
+        # scheduled for execution and cannot be touched anymore.
         self.commit_count: int = 0
         self.end_conditions: dict[str, int | float] = {
             "coverage_target": 1,
@@ -65,17 +67,24 @@ class SuiteProcessor:
                            **kwargs) -> Suite:
         self._handle_target_options(**kwargs)
         self.scenario_count = in_suite.scenario_count()
-        # Counts the scenarios committed by the runner. I.e. the scenarios that are scheduled for execution
-        # and cannot be touched anymore
         self.commit_count = 0
+        self.scenarios_requested = False
         return Suite('not implemented')
 
-    def next_scenario_request(self):
+    def next_scenario_request(self) -> int:
         """Indicates the wish for (at least) one more scenario and triggers trace genaration when needed."""
         # This basic implementation assumes that the complete target test suite is returned directly
         # by process_test_suite() in an overridden method. No further generation is triggered.
-        if self.scenario_count >= self.commit_count + 1:
+        if self.scenarios_requested:
+            return 0
+        self.scenarios_requested = True
+        return self.scenario_count
+
+    def commit_next_scenario(self) -> bool:
+        if self.scenario_count > self.commit_count:
             self.commit_count += 1
+            return True
+        return False
 
     @property
     def scenarios_committed(self) -> int:
@@ -132,11 +141,7 @@ class SuiteProcessor:
             case _:
                 actual = 0
 
-        if condition.endswith("_target"):
-            is_hit = actual >= threshold
-        else:
-            is_hit = False
-
+        is_hit = actual >= threshold if condition.endswith("_target") else False
         return is_hit, actual
 
     def _handle_target_options(self,
@@ -246,13 +251,19 @@ class ModelBased(SuiteProcessor):
         self._report_tracestate_wrapup()
         return self.out_suite
 
-    def next_scenario_request(self):
-        if len(self.tracestate) <= self.out_suite.scenario_count():
+    def next_scenario_request(self) -> int:
+        pending_at_entry = self.scenarios_pending
+        if not pending_at_entry:
             self._generate_next_batch(self.batch_size)
+        return self.scenarios_pending - pending_at_entry
+
+    def commit_next_scenario(self) -> bool:
         if len(self.tracestate) > self.out_suite.scenario_count():
             self.out_suite.scenarios.append(self.tracestate[self.out_suite.scenario_count()].scenario)
             self.commit_count += 1
             self.tracestate.rewind_limit += 1
+            return True
+        return False
 
     @property
     def scenarios_committed(self) -> int:

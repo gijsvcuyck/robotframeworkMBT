@@ -94,6 +94,7 @@ class SuiteReplacer:
         self.__clearTestSuite(self.current_suite)
         self.mbt_anchor_suite = self.current_suite
         self.processor.next_scenario_request()
+        self.processor.commit_next_scenario()
         self.add_next_new(self.mbt_anchor_suite)
 
     @keyword("Set model-based options")
@@ -241,17 +242,13 @@ class SuiteReplacer:
             logger.info(f"{self.processor.scenarios_committed} Scenarios completed for model. All targets achieved.")
             return
 
-        committed_old = self.processor.scenarios_committed
-        pending_old = self.processor.scenarios_pending
-        if not pending_old:
-            logger.info(f"{committed_old} Scenario{'s' if committed_old != 1 else ''} completed. Looking to extend trace.")
+        scenarios_in_buffer = self.processor.scenarios_pending
+        if not scenarios_in_buffer:
+            committed = self.processor.scenarios_committed
+            logger.info(f"{committed} Scenario{'s' if committed != 1 else ''} completed. Looking to extend trace.")
             self.processor.progress_report()
-        self.processor.next_scenario_request()
-        committed = self.processor.scenarios_committed
-        pending = self.processor.scenarios_pending
-        new_total = committed + pending
-        old_total = committed_old + pending_old
-        if not pending_old and new_total == old_total:
+        newly_added = self.processor.next_scenario_request()
+        if not scenarios_in_buffer and not newly_added:
             if not self.processor.are_all_targets_reached():
                 logger.info(f"Trace could not be extended.")
                 new_tc = self.current_suite.tests.create(name='Confirm exit criteria')
@@ -259,13 +256,16 @@ class SuiteReplacer:
                 self.mbt_anchor_suite = None
                 return
 
-        if new_total > old_total:
+        if newly_added:
             result.tags.add('mbt trace extension')
-            logger.info(f"MBT trace generation prepared {new_total-old_total} new scenarios.")
-        if not pending_old and self.processor.are_all_targets_reached():
+            logger.info(f"MBT trace generation prepared {newly_added} new scenario{'s' if newly_added != 1 else ''}.")
+        if not scenarios_in_buffer and self.processor.are_all_targets_reached():
             logger.info("Processing stopped. All targets achieved.")
             return
+        self.processor.commit_next_scenario()
         try:
             self.add_test(next(self.test_case_gen[-1]), self.current_suite)
         except StopIteration:
+            # Happens when the newly committed scenario is in the next test suite.
+            # The 'add test' for that suite is called in the end_suite listener.
             pass
