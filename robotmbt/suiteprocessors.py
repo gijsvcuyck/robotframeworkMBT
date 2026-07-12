@@ -242,7 +242,7 @@ class ModelBased(SuiteProcessor):
             else:
                 self.tracestate = TraceState([s.src_id for s in self.scenarios])
                 self.tracestate.unreached = direct_tracestate.unreached
-                logger.debug("Direct trace not discovered. Now exploring with loops, allowing repetition of scenarios.")
+                logger.debug("Discovery phase finished. Now exploring with loops, allowing repetition of scenarios.")
                 self._generate_next_batch(self.batch_size)
         finally:  # Draw the graph even when a timeout or user interrupt occurs
             if graph:
@@ -473,6 +473,7 @@ class ModelBased(SuiteProcessor):
         tracestate = self.tracestate
         old_len = len(tracestate)
         self._update_visualisation(tracestate)
+        self._report_tracestate_to_user(tracestate)
         while len(tracestate) < old_len + batchsize and not self.are_all_targets_reached(committed_only=False):
             candidate_id = tracestate.next_candidate(retry=True, randomise=True)
             if candidate_id is None:
@@ -480,7 +481,7 @@ class ModelBased(SuiteProcessor):
                 if not tracestate.can_rewind():
                     break
                 tail = modeller.rewind(tracestate)
-                logger.debug(f"Having to roll back up to {tail.scenario.name if tail else 'the beginning'}")
+                logger.debug(f"Having to roll back up to: {tail.scenario.name if tail else 'the beginning'}")
                 self._report_tracestate_to_user(tracestate)
                 if tracestate.model:
                     logger.debug(f"last state:\n{tracestate.model.get_status_text()}")
