@@ -25,5 +25,9 @@ class TagListener:
         if 'my tag' not in result.tags:
             result.status = 'FAIL'
             result.message = "Test tag 'my tag' missing"
-        BuiltIn().set_suite_variable('${confirmed_passes}', BuiltIn().get_variable_value('${confirmed_passes}') + 1)
-        logger.info("PASS confirmed by listener")
+
+        if result.status == 'PASS':
+            BuiltIn().set_suite_variable('${confirmed_passes}', BuiltIn().get_variable_value('${confirmed_passes}') + 1)
+            logger.info("PASS confirmed by listener")
+        else:
+            logger.info("PASS remained unconfirmed by listener")

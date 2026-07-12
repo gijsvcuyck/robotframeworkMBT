@@ -259,7 +259,7 @@ class TraceInfo:
             logger.warn(
                 f'TraceInfo got out of sync after {after}\nExpected state: {prev_state}\nActual state: {state}')
 
-    def export_graph(self, dir: str = '', atest: bool = False) -> str | None:
+    def export_graph(self, dir: str = '', atest: bool = False) -> str:
         encoded_instance = jsonpickle.encode(self)
         name = self.model_name.lower().replace(' ', '_')
         if atest:
@@ -281,9 +281,10 @@ class TraceInfo:
         if not os.path.exists(dir):
             os.makedirs(dir)
 
-        with open(f"{dir}{name}.json", "w") as f:
+        filename = f"{dir}{name}.json"
+        with open(filename, "w") as f:
             f.write(encoded_instance)
-        return None
+        return filename
 
     @staticmethod
     def import_graph_from_file(file_path: str):

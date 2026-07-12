@@ -62,8 +62,8 @@ class Visualiser:
         """
         self.trace_info = TraceInfo.import_graph_from_file(file_path)
 
-    def export_to_file(self, file_path: str):
-        self.trace_info.export_graph(file_path)
+    def export_to_file(self, file_path: str) -> str:
+        return self.trace_info.export_graph(file_path)
 
     def update_trace(self, trace: TraceState):
         """
