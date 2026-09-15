@@ -89,7 +89,8 @@ class StepArgument:
 
     @property
     def full_arg(self) -> str:
-        return f"${{{self.name}{f":{self.regex_pattern}"if self.regex_pattern else ""}}}"
+        maybe_suffix = f":{self.regex_pattern}" if self.regex_pattern else ""
+        return f"${{{self.name}{maybe_suffix}}}"
 
     @property
     def value(self) -> Any:
