@@ -486,7 +486,8 @@ class RobotKwStub:
         self.args = self.argstub()
         self.error = False
         self.embedded = SimpleNamespace(args=['${foo}', '${bar}'],
-                                        parse_args=lambda _: ['foo_value', 'bar_value'])
+                                                parse_args=lambda _: ['foo_value', 'bar_value'],
+                                                custom_patterns={"foo":"\\S+"})
 
     class argstub:
         argument_names = []

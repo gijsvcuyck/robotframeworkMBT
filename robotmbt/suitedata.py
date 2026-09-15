@@ -233,7 +233,8 @@ class Step:
             if robot_kw.error:
                 raise ValueError(robot_kw.error)
             if robot_kw.embedded:
-                self.args = StepArguments([StepArgument(*match, kind=ArgKind.EMBEDDED) for match in
+                patterns = robot_kw.embedded.custom_patterns
+                self.args = StepArguments([StepArgument(*match, kind=ArgKind.EMBEDDED,regex_pattern=patterns) for match in
                                            zip(robot_kw.embedded.args,
                                                robot_kw.embedded.parse_args(self.kw_wo_gherkin))])
             self.args += self.__handle_non_embedded_arguments(robot_kw.args)
